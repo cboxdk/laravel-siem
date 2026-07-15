@@ -1,0 +1,67 @@
+{
+    "name": "cboxdk/laravel-siem",
+    "description": "The SIEM log-streaming delivery engine for Laravel — a durable transactional outbox, queued batched delivery with retry/backoff/dead-letter/circuit-breaker, SSRF-guarded HTTP egress, encrypted destination secrets, and PII redaction, on top of the framework-agnostic cboxdk/siem core.",
+    "keywords": [
+        "laravel", "siem", "log-streaming", "splunk-hec", "elastic-ecs", "graylog-gelf",
+        "cef", "audit", "security-events", "outbox", "ssrf", "delivery", "dead-letter",
+        "circuit-breaker", "redaction"
+    ],
+    "homepage": "https://github.com/cboxdk/laravel-siem",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        { "name": "Sylvester Damgaard", "email": "sn@cbox.dk", "role": "Developer" }
+    ],
+    "//": "DEV-ONLY: the `path` repo resolves the sibling cboxdk/siem core from a local checkout. A composer `path` repository reports the working tree as `dev-main` (it does not read git tags), so the require below aliases it to 0.1.0 with `dev-main as 0.1.0`. At release this repositories entry is removed and the require becomes a plain `^0.1` from Packagist. cboxdk/laravel-ssrf already resolves from Packagist and needs no path repo.",
+    "repositories": [
+        { "type": "path", "url": "../siem", "options": { "symlink": true } }
+    ],
+    "require": {
+        "php": "^8.4",
+        "cboxdk/siem": "dev-main as 0.1.0",
+        "cboxdk/laravel-ssrf": "^1.0",
+        "illuminate/bus": "^12.0 || ^13.0",
+        "illuminate/contracts": "^12.0 || ^13.0",
+        "illuminate/database": "^12.0 || ^13.0",
+        "illuminate/http": "^12.0 || ^13.0",
+        "illuminate/queue": "^12.0 || ^13.0",
+        "illuminate/support": "^12.0 || ^13.0"
+    },
+    "require-dev": {
+        "larastan/larastan": "^3.0",
+        "laravel/pint": "^1.18",
+        "orchestra/testbench": "^10.0 || ^11.0",
+        "pestphp/pest": "^3.5 || ^4.0",
+        "pestphp/pest-plugin-laravel": "^3.0 || ^4.0"
+    },
+    "bin": [
+        "bin/check-licenses.php",
+        "bin/generate-sbom.php"
+    ],
+    "autoload": {
+        "psr-4": { "Cbox\\LaravelSiem\\": "src/" }
+    },
+    "autoload-dev": {
+        "psr-4": { "Cbox\\LaravelSiem\\Tests\\": "tests/" }
+    },
+    "scripts": {
+        "lint": "pint --test",
+        "analyse": "phpstan analyse --no-progress --memory-limit=1G",
+        "test": "pest",
+        "license-check": "@php bin/check-licenses.php",
+        "sbom": "@php bin/generate-sbom.php",
+        "qa": ["@lint", "@analyse", "@test", "@license-check", "@composer audit"]
+    },
+    "extra": {
+        "laravel": {
+            "providers": ["Cbox\\LaravelSiem\\LaravelSiemServiceProvider"]
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true,
+            "phpstan/extension-installer": true
+        }
+    }
+}
