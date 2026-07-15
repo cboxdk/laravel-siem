@@ -1,7 +1,7 @@
 {
     "bomFormat": "CycloneDX",
     "specVersion": "1.5",
-    "serialNumber": "urn:uuid:9054180e-47f5-4a0c-9b80-0ed8ec935423",
+    "serialNumber": "urn:uuid:9f9d709a-4f7e-48ff-89d6-87eeae5a325e",
     "version": 1,
     "metadata": {
         "tools": [
@@ -69,11 +69,11 @@
         },
         {
             "type": "library",
-            "bom-ref": "pkg:composer/cboxdk/siem@dev-main",
+            "bom-ref": "pkg:composer/cboxdk/siem@v0.1.0",
             "group": "cboxdk",
             "name": "siem",
-            "version": "dev-main",
-            "purl": "pkg:composer/cboxdk/siem@dev-main",
+            "version": "v0.1.0",
+            "purl": "pkg:composer/cboxdk/siem@v0.1.0",
             "description": "Zero-dependency SIEM log-streaming core for PHP: a normalized security-event value object and the formatters (Splunk HEC, Elastic ECS, ArcSight/syslog CEF, generic JSON) that turn it into what real SIEMs ingest. Framework-agnostic; the delivery/egress layer lives in the Laravel wrapper.",
             "licenses": [
                 {

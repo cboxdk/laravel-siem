@@ -5,16 +5,16 @@ All notable changes to `cboxdk/laravel-siem` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.1] - 2026-07-15
 
-### Development note
+### Fixed
 
-- `composer.json` carries a `path` repository pointing at `../siem` so the sibling
-  `cboxdk/siem` core resolves from a local checkout during development, and the
-  require is `dev-main as 0.1.0` (a `path` repo reports the working tree as
-  `dev-main` and does not read git tags). **At release** this repository entry is
-  removed and the constraint becomes a plain `^0.1` from Packagist.
-  `cboxdk/laravel-ssrf` already resolves from Packagist and needs no path repo.
+- **Installable from Packagist.** v0.1.0 shipped with the dev-only composer wiring
+  still in place — a `path` repository to `../siem` and `"cboxdk/siem": "dev-main as
+  0.1.0"` — so a plain `composer require cboxdk/laravel-siem` could not resolve the
+  core (`dev-main` is not a Packagist version). The `path` repository is removed and
+  the require is now `"cboxdk/siem": "^0.1"` from Packagist. No code changed; the
+  full gate is green against the published `cboxdk/siem` v0.1.0.
 
 ## [0.1.0] - 2026-07-15
 

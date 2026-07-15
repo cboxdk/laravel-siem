@@ -12,13 +12,9 @@
     "authors": [
         { "name": "Sylvester Damgaard", "email": "sn@cbox.dk", "role": "Developer" }
     ],
-    "//": "DEV-ONLY: the `path` repo resolves the sibling cboxdk/siem core from a local checkout. A composer `path` repository reports the working tree as `dev-main` (it does not read git tags), so the require below aliases it to 0.1.0 with `dev-main as 0.1.0`. At release this repositories entry is removed and the require becomes a plain `^0.1` from Packagist. cboxdk/laravel-ssrf already resolves from Packagist and needs no path repo.",
-    "repositories": [
-        { "type": "path", "url": "../siem", "options": { "symlink": true } }
-    ],
     "require": {
         "php": "^8.4",
-        "cboxdk/siem": "dev-main as 0.1.0",
+        "cboxdk/siem": "^0.1",
         "cboxdk/laravel-ssrf": "^1.0",
         "illuminate/bus": "^12.0 || ^13.0",
         "illuminate/contracts": "^12.0 || ^13.0",
