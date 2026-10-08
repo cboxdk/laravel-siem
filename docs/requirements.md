@@ -11,7 +11,8 @@ invented.
 
 ## Runtime
 
-- **PHP** `^8.4` (developed and CI-tested on 8.4 and 8.5).
+- **PHP** `^8.4` (developed and CI-tested on 8.4 and 8.5), with **`ext-openssl`**
+  (signs the Google Cloud Storage token request).
 - **Laravel** `^12.0 || ^13.0` — the current and previous major, via the
   `illuminate/*` components:
   - `illuminate/bus`, `illuminate/contracts`, `illuminate/database`,
@@ -21,13 +22,17 @@ invented.
 - **[`cboxdk/laravel-ssrf`](https://github.com/cboxdk/laravel-ssrf)** `^1.0` — the
   shared, independently-tested SSRF guard used for all HTTP egress.
 
-No other third-party runtime dependencies.
+No other third-party runtime dependencies. The cloud destinations need no SDK:
+AWS Signature V4 and the Google service-account token exchange are implemented on
+PHP's `hash_hmac` and OpenSSL.
 
 ## Infrastructure
 
 - A **queue** connection for the pump (any Laravel driver: redis, database, sqs).
   Delivery never runs on the request thread.
 - An **`APP_KEY`** — destination secrets use Laravel's `encrypted` cast.
+- A **cache** store — short-lived cloud credentials (GCS access tokens, assumed-role
+  STS credentials) are cached there, encrypted (`siem.credentials_cache.store`).
 - A **database** for the `log_streams` and `stream_deliveries` tables.
 
 ## Development

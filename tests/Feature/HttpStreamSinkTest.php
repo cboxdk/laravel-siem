@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Cbox\LaravelSiem\Exceptions\DestinationRefused;
 use Cbox\LaravelSiem\Exceptions\StreamDeliveryFailed;
 use Cbox\LaravelSiem\Sinks\HttpStreamSink;
 use Cbox\Siem\ValueObjects\StreamTarget;
@@ -96,3 +97,16 @@ it('throws a delivery failure (scrubbed) on a non-2xx response', function (): vo
         ]),
     ))->toThrow(StreamDeliveryFailed::class);
 });
+
+it('maps 401/403 to a refusal (no blind retries), other errors stay transient', function (int $status, bool $refused): void {
+    Http::fake(['*' => Http::response('', $status)]);
+
+    try {
+        (new HttpStreamSink)->send(['{"a":1}'], new StreamTarget('json', 'https://collector.example.test/ingest', [
+            'destination' => 'generic_json', 'auth' => 'bearer', 'secret' => 'bearer-token',
+        ]));
+        $this->fail('expected a delivery failure');
+    } catch (StreamDeliveryFailed $e) {
+        expect($e instanceof DestinationRefused)->toBe($refused);
+    }
+})->with([[401, true], [403, true], [400, false], [500, false]]);

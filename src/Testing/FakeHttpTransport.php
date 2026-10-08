@@ -9,9 +9,9 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 
 /**
- * Programs Laravel's HTTP fake for the {@see HttpStreamSink}
- * so its framing, auth, TLS posture, and SSRF handling can be asserted without a
- * real endpoint. After programming a response, use `Http::assertSent(...)` /
+ * Programs Laravel's HTTP fake for the real sinks ({@see HttpStreamSink} and the
+ * Datadog/S3/GCS sinks) so their framing, auth, TLS posture, and SSRF handling can
+ * be asserted without a real endpoint. After programming a response, use `Http::assertSent(...)` /
  * `Http::assertNothingSent()` as usual to inspect what would have gone on the wire.
  */
 class FakeHttpTransport
@@ -28,6 +28,15 @@ class FakeHttpTransport
      * The destination rejects everything with a server error.
      */
     public static function rejecting(int $status = 500): void
+    {
+        Http::fake(['*' => Http::response('', $status)]);
+    }
+
+    /**
+     * The destination refuses the credentials (HTTP 403 by default) — what a
+     * revoked API key, a wrong secret or a missing permission looks like.
+     */
+    public static function refusingCredentials(int $status = 403): void
     {
         Http::fake(['*' => Http::response('', $status)]);
     }

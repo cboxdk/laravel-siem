@@ -144,6 +144,73 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Datadog
+    |--------------------------------------------------------------------------
+    |
+    | Defaults for the attributes every Datadog log entry carries, used when a
+    | stream does not set its own: `ddsource` and `service` (the latter falls
+    | back to app.name). The hostname defaults to the host of app.url.
+    |
+    */
+
+    'datadog' => [
+        'source' => env('SIEM_DATADOG_SOURCE', 'cbox'),
+        'service' => env('SIEM_DATADOG_SERVICE'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | AWS (assumed-role S3 streams)
+    |--------------------------------------------------------------------------
+    |
+    | The platform's OWN AWS identity, used only to call STS AssumeRole for
+    | streams configured with a role ARN (the customer's role trusts this
+    | principal and requires the stream's external ID). Access-key streams do not
+    | use it. Leave unset to offer access-key streams only.
+    |
+    */
+
+    'aws' => [
+        'access_key_id' => env('SIEM_AWS_ACCESS_KEY_ID'),
+        'secret_access_key' => env('SIEM_AWS_SECRET_ACCESS_KEY'),
+        'session_token' => env('SIEM_AWS_SESSION_TOKEN'),
+        'sts_endpoint' => env('SIEM_AWS_STS_ENDPOINT', 'https://sts.amazonaws.com'),
+        'sts_region' => env('SIEM_AWS_STS_REGION', 'us-east-1'),
+        'role_duration' => (int) env('SIEM_AWS_ROLE_DURATION', 3600),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Google Cloud Storage
+    |--------------------------------------------------------------------------
+    |
+    | The OAuth token endpoint service-account keys are exchanged at. A key
+    | file's own token_uri is ignored on purpose (it would let a crafted key
+    | choose where the platform sends requests).
+    |
+    */
+
+    'gcs' => [
+        'token_uri' => env('SIEM_GCS_TOKEN_URI', 'https://oauth2.googleapis.com/token'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Credentials Cache
+    |--------------------------------------------------------------------------
+    |
+    | Where short-lived cloud credentials (GCS access tokens, assumed-role STS
+    | credentials) are cached, encrypted with the app key, until shortly before
+    | they expire. null uses the default cache store.
+    |
+    */
+
+    'credentials_cache' => [
+        'store' => env('SIEM_CREDENTIALS_CACHE_STORE'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Models
     |--------------------------------------------------------------------------
     |

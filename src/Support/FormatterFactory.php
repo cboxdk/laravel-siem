@@ -26,7 +26,9 @@ class FormatterFactory
             Destination::ElasticEcs => new EcsFormatter,
             Destination::GraylogGelf => new GelfFormatter($this->host()),
             Destination::CefHttp => new CefFormatter,
-            Destination::GenericJson => new JsonFormatter,
+            // The cloud destinations carry the neutral JSON document: as the
+            // Datadog entry's `message`, or as one NDJSON line of an object.
+            Destination::GenericJson, Destination::Datadog, Destination::S3, Destination::Gcs => new JsonFormatter,
         };
     }
 

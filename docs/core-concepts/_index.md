@@ -16,3 +16,5 @@ transient outage, or letting one bad destination take down the app.
 - [Outbox and semantics](outbox-and-semantics.md) — what the transactional outbox
   guarantees, and the honest truth about ordering and duplicates (at-least-once,
   unordered, dedup by event id).
+- [Stream health and test delivery](stream-health.md) — refused credentials vs
+  transient failures, the stream status, and the synchronous test delivery.

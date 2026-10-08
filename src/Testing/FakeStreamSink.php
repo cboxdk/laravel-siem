@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Cbox\LaravelSiem\Testing;
 
+use Cbox\LaravelSiem\Enums\FailureKind;
+use Cbox\LaravelSiem\Exceptions\DestinationRefused;
 use Cbox\LaravelSiem\Exceptions\StreamDeliveryFailed;
 use Cbox\Siem\Contracts\StreamSink;
 use Cbox\Siem\ValueObjects\StreamTarget;
@@ -30,11 +32,18 @@ class FakeStreamSink implements StreamSink
 
     private int $sendCount = 0;
 
+    /** @var array<string, FailureKind> */
+    private array $refusingTargets = [];
+
     public function send(iterable $formattedRecords, StreamTarget $target): void
     {
         $this->sendCount++;
 
         $failByCount = $this->failAfter !== null && $this->sendCount > $this->failAfter;
+
+        if (isset($this->refusingTargets[$target->name])) {
+            throw new DestinationRefused("fake sink: [{$target->name}] refused the credentials", $this->refusingTargets[$target->name]);
+        }
 
         if ($this->failAll || $failByCount || in_array($target->name, $this->failingTargets, true)) {
             throw new StreamDeliveryFailed("fake sink: delivery to [{$target->name}] failed");
@@ -54,6 +63,28 @@ class FakeStreamSink implements StreamSink
     public function failFor(string ...$targetNames): self
     {
         $this->failingTargets = [...$this->failingTargets, ...array_values($targetNames)];
+
+        return $this;
+    }
+
+    /**
+     * Make the named target REFUSE delivery the way a destination refuses bad
+     * credentials (401/403) or a missing bucket — a failure retrying cannot fix.
+     */
+    public function refuseFor(string $targetName, FailureKind $kind = FailureKind::Authentication): self
+    {
+        $this->refusingTargets[$targetName] = $kind;
+
+        return $this;
+    }
+
+    /**
+     * Stop refusing the named target (the operator fixed it).
+     */
+    public function acceptAgain(string $targetName): self
+    {
+        unset($this->refusingTargets[$targetName]);
+        $this->failingTargets = array_values(array_filter($this->failingTargets, static fn (string $name): bool => $name !== $targetName));
 
         return $this;
     }

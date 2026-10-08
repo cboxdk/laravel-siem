@@ -5,6 +5,69 @@ All notable changes to `cboxdk/laravel-siem` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Datadog destination** (`Destination::Datadog`) — the Logs intake API v2 on any
+  Datadog site (`DatadogSite`: US1/US3/US5/EU1/AP1/AP2/US1-FED). Entries carry
+  `ddsource`, `service`, `ddtags`, `hostname` and the event JSON as `message`; gzip;
+  the API key in `DD-API-KEY`. Requests never exceed the intake's 1000 entries /
+  5 MB uncompressed, whatever `siem.batch` says (the pump clamps to
+  `Destination::maxBatchRecords()`/`maxBatchBytes()`, and the sink splits).
+- **Amazon S3 destination** (`Destination::S3`) — one NDJSON object per batch under
+  `{prefix}/{yyyy}/{mm}/{dd}/{hh}/{batch-id}.ndjson[.gz]`, signed with AWS Signature
+  V4 (`Support\Aws\SigV4Signer`, verified against AWS's published test vectors — no
+  AWS SDK dependency). Access-key or **assumed-role** credentials (STS `AssumeRole`
+  with the platform's identity from `siem.aws.*` and a generated per-stream external
+  ID; temporary credentials cached encrypted), optional SSE (`AES256` / `aws:kms`),
+  and S3-compatible endpoints (MinIO, R2) with path-style addressing.
+- **Google Cloud Storage destination** (`Destination::Gcs`) — the same object
+  layout, authorized by a service-account JSON key: an RS256 JWT (OpenSSL) exchanged
+  for an access token (RFC 7523), cached encrypted. The key file's own `token_uri`
+  is ignored in favour of `siem.gcs.token_uri`.
+- **Typed destination options** — a nullable `options` JSON column on
+  `log_streams`, validated by `Support\DestinationSettings` into
+  `ValueObjects\Options\{DatadogOptions, S3Options, GcsOptions}`;
+  `LogStreams::create()` gains an optional trailing `array $options = []`.
+  Invalid settings throw `Exceptions\InvalidStreamConfiguration` (with the field
+  name) before anything is stored. An empty endpoint means the destination's own;
+  a custom one must be `https` and passes the SSRF guard.
+- **Refusals vs transient failures** — `Exceptions\DestinationRefused`
+  (a `StreamDeliveryFailed` with a `FailureKind`: authentication / configuration).
+  The pump opens the circuit at once on a refusal and keeps the rows pending without
+  spending their retry budget; `LogStreams::update()` of the destination settings
+  re-validates them and resets the breaker.
+- **Stream status** — `last_error`, `last_failure_kind`, `last_failure_at` columns;
+  `LogStream::health()` / `CircuitBreaker::health()` → `StreamHealth`
+  (healthy / degraded / paused / action_required).
+- **Test delivery** — `Contracts\StreamTester` (default `SinkStreamTester`) sends one
+  marked `siem.stream.test` event synchronously and returns a `TestDeliveryResult`;
+  a success also closes the breaker.
+- `Sinks\DestinationRouter` (the new `StreamSink` binding) routing to
+  `HttpStreamSink`, `DatadogStreamSink`, `S3StreamSink`, `GcsStreamSink`; the shared
+  `Support\Egress` path (SSRF pin, TLS, timeouts, scrubbing) every sink and
+  credential exchange uses; rebindable `Contracts\AwsCredentialResolver` and
+  `Contracts\GcsAccessTokens`.
+- `Destination::httpCollectors()` / `requiresOptions()` / `isObjectStorage()`, so a
+  host whose form collects only a URL and a token can keep offering exactly the
+  original five.
+- Testing: `FakeStreamSink::refuseFor()` / `acceptAgain()`,
+  `FakeHttpTransport::refusingCredentials()`, `InteractsWithLogStreams::testLogStream()`
+  and an `$options` argument on `createLogStream()`.
+- Migration `2026_10_08_000100_add_destination_options_to_log_streams` — nullable
+  columns, no defaults, each added only if missing (safe to re-run).
+- `ext-openssl` is now an explicit requirement (it signs the GCS token request).
+
+### Changed
+
+- The HTTP collectors map **401/403 to a refusal** too: a Splunk/Elastic/… stream
+  whose token is rejected now opens its circuit immediately and shows
+  `action_required`, instead of retrying the same token until the rows dead-letter.
+- `SecretScrubber::scrubAll()` scrubs several secrets (longest first); every secret
+  parameter is marked `#[SensitiveParameter]`.
+- The committed `sbom.json` is regenerated against current dependency versions.
+
 ## [0.1.1] - 2026-07-15
 
 ### Fixed
