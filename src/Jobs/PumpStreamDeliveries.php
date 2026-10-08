@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Cbox\LaravelSiem\Jobs;
 
 use Cbox\LaravelSiem\Enums\DeliveryStatus;
+use Cbox\LaravelSiem\Enums\FailureKind;
+use Cbox\LaravelSiem\Exceptions\DestinationRefused;
 use Cbox\LaravelSiem\Models\LogStream;
 use Cbox\LaravelSiem\Models\StreamDelivery;
 use Cbox\LaravelSiem\Support\CircuitBreaker;
@@ -15,9 +17,9 @@ use Cbox\LaravelSiem\Support\ModelClass;
 use Cbox\LaravelSiem\Support\Redactor;
 use Cbox\LaravelSiem\Support\SecretScrubber;
 use Cbox\LaravelSiem\Support\SiemEventSerializer;
+use Cbox\LaravelSiem\Support\StreamTargetFactory;
 use Cbox\Siem\Contracts\StreamFormatter;
 use Cbox\Siem\Contracts\StreamSink;
-use Cbox\Siem\ValueObjects\StreamTarget;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -37,7 +39,9 @@ use Throwable;
  * the breaker closes; on failure the rows get bounded exponential backoff with
  * jitter (or are dead-lettered past the cap), the breaker counts the failure
  * (opening past its threshold), and the run stops — a failing destination never
- * spins a retry loop and never blocks another stream.
+ * spins a retry loop and never blocks another stream. A destination that REFUSES
+ * the credentials or configuration ({@see DestinationRefused}) opens the breaker
+ * at once and leaves the rows pending without spending their retry budget.
  *
  * The job is {@see ShouldBeUnique} keyed by the stream: at most one pump per stream
  * runs at a time. Without this, a slow destination lets the next scheduled run start
@@ -81,6 +85,7 @@ class PumpStreamDeliveries implements ShouldBeUnique, ShouldQueue
         DeliveryBatcher $batcher,
         SiemEventSerializer $serializer,
         SecretScrubber $scrubber,
+        StreamTargetFactory $targets,
     ): void {
         $stream = $this->stream();
 
@@ -101,16 +106,27 @@ class PumpStreamDeliveries implements ShouldBeUnique, ShouldQueue
         }
 
         $formatter = $formatters->for($stream->destination);
+        // The configured bounds, clamped to the destination's own hard limits
+        // (Datadog: 1000 entries / 5 MB per request) so a host raising
+        // `siem.batch` can never produce a request the destination rejects.
         $batches = $batcher->batch(
             $rows,
-            Config::int('siem.batch.max_records', 500),
-            Config::int('siem.batch.max_bytes', 512 * 1024),
+            min(Config::int('siem.batch.max_records', 500), $stream->destination->maxBatchRecords() ?? PHP_INT_MAX),
+            min(Config::int('siem.batch.max_bytes', 512 * 1024), $stream->destination->maxBatchBytes() ?? PHP_INT_MAX),
             Config::int('siem.batch.max_age', 5),
         );
+        $target = $targets->for($stream, $formatter);
 
         foreach ($batches as $batch) {
             try {
-                $sink->send($this->records($batch, $stream, $redactor, $formatter, $serializer), $this->target($stream, $formatter));
+                $sink->send($this->records($batch, $stream, $redactor, $formatter, $serializer), $target);
+            } catch (DestinationRefused $e) {
+                // Refused credentials/configuration: retrying cannot help. Open the
+                // circuit now and keep the events pending WITHOUT spending their
+                // retry budget — they flush once an operator fixes the stream.
+                $this->recordRefusal($stream, $batch, $breaker, $scrubber, $e);
+
+                return;
             } catch (Throwable $e) {
                 $this->recordFailure($stream, $batch, $breaker, $scrubber, $e);
 
@@ -151,22 +167,6 @@ class PumpStreamDeliveries implements ShouldBeUnique, ShouldQueue
         return $records;
     }
 
-    private function target(LogStream $stream, StreamFormatter $formatter): StreamTarget
-    {
-        return new StreamTarget(
-            name: $stream->name,
-            endpoint: $stream->endpoint_url,
-            options: [
-                'destination' => $stream->destination->value,
-                'auth' => $stream->auth->value,
-                // Decrypted in memory only, for the sink to build the auth header.
-                'secret' => $stream->secret,
-                'content_type' => $formatter->contentType(),
-                'gzip' => config('siem.http.gzip', false) === true,
-            ],
-        );
-    }
-
     /**
      * @param  list<StreamDelivery>  $batch
      */
@@ -205,7 +205,25 @@ class PumpStreamDeliveries implements ShouldBeUnique, ShouldQueue
             $row->save();
         }
 
-        $breaker->recordFailure($stream);
+        $breaker->recordFailure($stream, FailureKind::Transient, $error);
+        $stream->save();
+    }
+
+    /**
+     * @param  list<StreamDelivery>  $batch
+     */
+    private function recordRefusal(LogStream $stream, array $batch, CircuitBreaker $breaker, SecretScrubber $scrubber, DestinationRefused $e): void
+    {
+        $error = $scrubber->scrub($e->getMessage(), $stream->secret);
+
+        // The rows stay due: the open breaker is what holds them back, so the
+        // moment an operator fixes the stream (which resets the breaker) they go.
+        foreach ($batch as $row) {
+            $row->last_error = $error;
+            $row->save();
+        }
+
+        $breaker->trip($stream, $e->kind, $error);
         $stream->save();
     }
 

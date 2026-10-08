@@ -5,11 +5,14 @@ declare(strict_types=1);
 namespace Cbox\LaravelSiem\Testing;
 
 use Cbox\LaravelSiem\Contracts\LogStreams;
+use Cbox\LaravelSiem\Contracts\StreamTester;
 use Cbox\LaravelSiem\Enums\AuthScheme;
 use Cbox\LaravelSiem\Enums\Destination;
 use Cbox\LaravelSiem\Jobs\PumpStreamDeliveries;
 use Cbox\LaravelSiem\ValueObjects\RegisteredStream;
+use Cbox\LaravelSiem\ValueObjects\TestDeliveryResult;
 use Cbox\Siem\Contracts\StreamSink;
+use InvalidArgumentException;
 
 /**
  * Drop this into a host application's `TestCase` to drive the SIEM delivery engine
@@ -42,6 +45,7 @@ trait InteractsWithLogStreams
     /**
      * @param  array<string, string>  $redaction
      * @param  array<string, mixed>  $filters
+     * @param  array<string, mixed>  $options
      */
     protected function createLogStream(
         string $name,
@@ -52,6 +56,7 @@ trait InteractsWithLogStreams
         ?string $ownerKey = null,
         array $filters = [],
         array $redaction = [],
+        array $options = [],
     ): RegisteredStream {
         return app(LogStreams::class)->create(
             $name,
@@ -62,7 +67,19 @@ trait InteractsWithLogStreams
             $ownerKey,
             $filters,
             $redaction,
+            $options,
         );
+    }
+
+    /**
+     * Run a test delivery for a stream through the real {@see StreamTester} (and
+     * whatever sink is bound — the fake one after {@see self::fakeStreamSink()}).
+     */
+    protected function testLogStream(string $streamId): TestDeliveryResult
+    {
+        $stream = app(LogStreams::class)->find($streamId) ?? throw new InvalidArgumentException("No log stream [{$streamId}].");
+
+        return app(StreamTester::class)->test($stream);
     }
 
     /**

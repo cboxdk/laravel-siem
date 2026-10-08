@@ -8,7 +8,8 @@ description: The SIEM log-streaming delivery engine for Laravel — a durable ou
 
 Cbox SIEM for Laravel is the delivery engine that ships normalized security
 events to real SIEMs — Splunk HEC, Elastic (ECS), Graylog (GELF), ArcSight/syslog
-(CEF), or any HTTP JSON collector — durably and safely.
+(CEF), any HTTP JSON collector, or Datadog Logs — and archives them to Amazon S3
+(or an S3-compatible store) and Google Cloud Storage, durably and safely.
 
 It is the **Laravel wrapper** over the framework-agnostic
 [`cboxdk/siem`](https://github.com/cboxdk/siem) core. The two tiers split cleanly:
@@ -36,8 +37,8 @@ your app ──emit──▶ StreamDispatcher ──insert (in your txn)──�
                                                                     │
                                             queued PumpStreamDeliveries (per stream)
                                                                     │
-                        redact ─▶ core formatter ─▶ HttpStreamSink ─▶ your SIEM
-                                                     (SSRF-guarded, TLS-on, batched)
+                        redact ─▶ core formatter ─▶ DestinationRouter ─▶ your SIEM / bucket
+                                           (HTTP, Datadog, S3, GCS sinks — SSRF-guarded, TLS-on, batched)
 ```
 
 Delivery is **deny-by-default**: with no enabled `LogStream`, nothing is written
@@ -49,7 +50,8 @@ and nothing is sent. Delivery is **at-least-once and unordered** — see
 - [Quickstart](quickstart.md) — configure a stream and deliver in one read.
 - [Requirements](requirements.md) — PHP, Laravel, and dependency versions.
 - [Core concepts](core-concepts/_index.md) — the delivery engine and its semantics.
-- [Cookbook](cookbook/_index.md) — stream to Splunk, stream to Elastic.
+- [Cookbook](cookbook/_index.md) — Splunk, Elastic, Datadog, Amazon S3, Google
+  Cloud Storage.
 - [Extension points](extension-points/_index.md) — custom sinks and destinations.
 - [Security](security/_index.md) — egress/SSRF, secrets, and redaction.
 

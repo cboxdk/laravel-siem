@@ -18,6 +18,13 @@ framing/auth defaults:
 | `GraylogGelf` | `GelfFormatter` | Bearer |
 | `CefHttp` | `CefFormatter` | Bearer |
 | `GenericJson` | `JsonFormatter` | Bearer |
+| `Datadog` | `JsonFormatter` (as each entry's `message`) | none — `DD-API-KEY` |
+| `S3` | `JsonFormatter` (one NDJSON line per event) | none — AWS SigV4 |
+| `Gcs` | `JsonFormatter` (one NDJSON line per event) | none — Google OAuth token |
+
+The last three take typed `options` (`Destination::requiresOptions()`), validated by
+`Support\DestinationSettings` into `ValueObjects\Options\{DatadogOptions,
+S3Options, GcsOptions}` before the registry stores them.
 
 To add a genuinely new SIEM schema, add the pure formatter to the
 [`cboxdk/siem`](https://github.com/cboxdk/siem) core (that is where formatting

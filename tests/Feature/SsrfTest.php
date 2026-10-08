@@ -8,6 +8,8 @@ use Cbox\LaravelSiem\Exceptions\StreamDeliveryFailed;
 use Cbox\LaravelSiem\Exceptions\UnsafeStreamUrl;
 use Cbox\LaravelSiem\Sinks\HttpStreamSink;
 use Cbox\LaravelSiem\Support\SafeStreamUrl;
+use Cbox\LaravelSiem\Tests\Fixtures\ServiceAccountKey;
+use Cbox\Siem\Contracts\StreamSink;
 use Cbox\Siem\ValueObjects\StreamTarget;
 use Cbox\Ssrf\Contracts\Resolver;
 use Cbox\Ssrf\Testing\FakeResolver;
@@ -53,3 +55,21 @@ it('aborts a delivery to a private endpoint and puts nothing on the wire', funct
 it('allows a genuinely public endpoint', function (): void {
     expect(SafeStreamUrl::isSafe('https://93.184.216.34/collector'))->toBeTrue();
 });
+
+it('aborts a cloud delivery whose endpoint resolves to a private address', function (string $destination, array $options): void {
+    Http::fake();
+    app()->instance(Resolver::class, new FakeResolver([
+        'minio.evil.example' => ['10.0.0.12'],
+        'oauth2.googleapis.com' => ['10.0.0.13'],
+    ]));
+
+    $target = new StreamTarget('cloud', 'https://minio.evil.example', ['destination' => $destination, ...$options]);
+
+    expect(fn () => app(StreamSink::class)->send(['{"a":1}'], $target))->toThrow(StreamDeliveryFailed::class);
+
+    Http::assertNothingSent();
+})->with([
+    's3 custom endpoint' => ['s3', ['bucket' => 'audit', 'region' => 'us-east-1', 'access_key_id' => 'minioadmin', 'secret' => 'minio-secret']],
+    'datadog proxy' => ['datadog', ['site' => 'datadoghq.com', 'secret' => 'dd-key']],
+    'gcs token exchange' => ['gcs', ['bucket' => 'audit', 'secret' => ServiceAccountKey::json()]],
+]);

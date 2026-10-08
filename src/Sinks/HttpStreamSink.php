@@ -6,16 +6,11 @@ namespace Cbox\LaravelSiem\Sinks;
 
 use Cbox\LaravelSiem\Enums\AuthScheme;
 use Cbox\LaravelSiem\Enums\Destination;
-use Cbox\LaravelSiem\Exceptions\StreamDeliveryFailed;
-use Cbox\LaravelSiem\Exceptions\UnsafeStreamUrl;
-use Cbox\LaravelSiem\Support\Config;
-use Cbox\LaravelSiem\Support\SafeStreamUrl;
+use Cbox\LaravelSiem\Exceptions\DestinationRefused;
+use Cbox\LaravelSiem\Support\Egress;
 use Cbox\LaravelSiem\Support\SecretScrubber;
 use Cbox\Siem\Contracts\StreamSink;
 use Cbox\Siem\ValueObjects\StreamTarget;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
-use Throwable;
 
 /**
  * The real {@see StreamSink}: ships a batch of already-formatted records to a SIEM
@@ -34,10 +29,20 @@ use Throwable;
  *   credential.
  * - **Secret hygiene** — the token is only ever a header/signature input, never
  *   logged, and any failure message is scrubbed of it before it leaves this class.
+ * - **Refusals are not retried blindly** — a 401/403 is a
+ *   {@see DestinationRefused}: the pump opens the
+ *   circuit immediately and flags the stream instead of burning retries.
+ *
+ * The request itself goes through the shared {@see Egress} path.
  */
 class HttpStreamSink implements StreamSink
 {
-    public function __construct(private readonly SecretScrubber $scrubber = new SecretScrubber) {}
+    private readonly Egress $egress;
+
+    public function __construct(SecretScrubber $scrubber = new SecretScrubber, ?Egress $egress = null)
+    {
+        $this->egress = $egress ?? new Egress($scrubber);
+    }
 
     public function send(iterable $formattedRecords, StreamTarget $target): void
     {
@@ -56,14 +61,6 @@ class HttpStreamSink implements StreamSink
         $url = $this->resolveUrl($destination, $target->endpoint);
         $body = implode("\n", $records);
 
-        // SSRF: resolve once, pin to the validated IPs, and refuse redirects. A
-        // blocked endpoint throws — the send aborts before any bytes leave.
-        try {
-            $pinned = SafeStreamUrl::pinnedOptions($url);
-        } catch (UnsafeStreamUrl $e) {
-            throw new StreamDeliveryFailed($this->scrubber->scrub($e->getMessage(), $secret), previous: $e);
-        }
-
         $headers = $this->authHeaders($auth, $secret, $body);
         $contentType = $this->option($target, 'content_type') ?? 'application/json';
 
@@ -75,22 +72,15 @@ class HttpStreamSink implements StreamSink
             }
         }
 
-        try {
-            $response = Http::withHeaders($headers)
-                ->withOptions([...$pinned, ...$this->tlsOptions()])
-                ->withoutRedirecting()
-                ->connectTimeout($this->connectTimeout())
-                ->timeout($this->timeout())
-                ->withBody($body, $contentType)
-                ->post($url);
-        } catch (Throwable $e) {
-            throw new StreamDeliveryFailed($this->scrubber->scrub($e->getMessage(), $secret), previous: $e);
-        }
+        // SSRF (resolve once, pin, refuse redirects), TLS, timeouts and error
+        // scrubbing all live in the shared egress path. A blocked endpoint throws
+        // before any bytes leave.
+        $response = $this->egress->send('POST', $url, $headers, $body, $contentType, [$secret]);
 
         if (! $response->successful()) {
-            throw new StreamDeliveryFailed(
-                $this->scrubber->scrub("destination responded with HTTP {$response->status()}", $secret),
-            );
+            // 401/403 become a DestinationRefused (the circuit opens at once, an
+            // operator must fix the token); anything else is retried.
+            throw $this->egress->failure($response, 'destination', [$secret]);
         }
     }
 
@@ -103,13 +93,7 @@ class HttpStreamSink implements StreamSink
      */
     public function tlsOptions(): array
     {
-        if (config('siem.http.tls_verify', true) !== false) {
-            return [];
-        }
-
-        Log::warning('siem: TLS certificate verification is DISABLED for stream delivery (siem.http.tls_verify=false). Never do this in production.');
-
-        return ['verify' => false];
+        return $this->egress->tlsOptions();
     }
 
     private function resolveUrl(Destination $destination, string $endpoint): string
@@ -185,15 +169,5 @@ class HttpStreamSink implements StreamSink
         }
 
         return (string) $value;
-    }
-
-    private function connectTimeout(): int
-    {
-        return max(1, Config::int('siem.http.connect_timeout', 5));
-    }
-
-    private function timeout(): int
-    {
-        return max(1, Config::int('siem.http.timeout', 15));
     }
 }

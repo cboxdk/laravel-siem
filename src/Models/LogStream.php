@@ -6,6 +6,9 @@ namespace Cbox\LaravelSiem\Models;
 
 use Cbox\LaravelSiem\Enums\AuthScheme;
 use Cbox\LaravelSiem\Enums\Destination;
+use Cbox\LaravelSiem\Enums\FailureKind;
+use Cbox\LaravelSiem\Enums\StreamHealth;
+use Cbox\LaravelSiem\Support\CircuitBreaker;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
@@ -23,6 +26,12 @@ use Illuminate\Support\Carbon;
  * decrypted in memory at delivery time — it is never logged or persisted in an
  * error payload.
  *
+ * The cloud destinations (Datadog, S3, GCS) keep their typed, NON-secret settings
+ * (site, bucket, region, prefix, …) in `options`; their credential (API key,
+ * secret access key, service-account JSON) is still the encrypted `secret`. The
+ * `last_error` / `last_failure_kind` / `last_failure_at` columns record the latest
+ * failure (scrubbed) for the stream's status — see {@see CircuitBreaker::health()}.
+ *
  * @property string $id
  * @property string $name
  * @property Destination $destination
@@ -36,6 +45,10 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $last_success_at
  * @property int $consecutive_failures
  * @property Carbon|null $circuit_opened_at
+ * @property array<string, mixed>|null $options
+ * @property string|null $last_error
+ * @property FailureKind|null $last_failure_kind
+ * @property Carbon|null $last_failure_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -71,6 +84,24 @@ class LogStream extends Model
     }
 
     /**
+     * The stream's delivery status (healthy, degraded, paused, action required).
+     */
+    public function health(): StreamHealth
+    {
+        return app(CircuitBreaker::class)->health($this);
+    }
+
+    /**
+     * The destination's typed settings as stored (empty for the HTTP collectors).
+     *
+     * @return array<string, mixed>
+     */
+    public function destinationOptions(): array
+    {
+        return is_array($this->options) ? $this->options : [];
+    }
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array
@@ -85,6 +116,9 @@ class LogStream extends Model
             'consecutive_failures' => 'integer',
             'last_success_at' => 'datetime',
             'circuit_opened_at' => 'datetime',
+            'options' => 'array',
+            'last_failure_kind' => FailureKind::class,
+            'last_failure_at' => 'datetime',
         ];
     }
 }

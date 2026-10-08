@@ -6,7 +6,7 @@ use Cbox\LaravelSiem\Contracts\LogStreams;
 use Cbox\LaravelSiem\Contracts\StreamDispatcher;
 use Cbox\LaravelSiem\DatabaseLogStreams;
 use Cbox\LaravelSiem\DatabaseStreamDispatcher;
-use Cbox\LaravelSiem\Sinks\HttpStreamSink;
+use Cbox\LaravelSiem\Sinks\DestinationRouter;
 use Cbox\Siem\Contracts\StreamSink;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
@@ -16,7 +16,7 @@ uses(RefreshDatabase::class);
 it('binds the package contracts to their default implementations', function (): void {
     expect(app(LogStreams::class))->toBeInstanceOf(DatabaseLogStreams::class)
         ->and(app(StreamDispatcher::class))->toBeInstanceOf(DatabaseStreamDispatcher::class)
-        ->and(app(StreamSink::class))->toBeInstanceOf(HttpStreamSink::class);
+        ->and(app(StreamSink::class))->toBeInstanceOf(DestinationRouter::class);
 });
 
 it('merges the package config', function (): void {

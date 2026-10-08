@@ -51,13 +51,21 @@ run then stops (the destination is down; the breaker and backoff govern the next
 attempt rather than hammering). Retries are always bounded — never an unbounded
 loop.
 
+### On a refusal
+
+When the destination refuses the credentials or configuration (a
+`DestinationRefused`: 401/403, no such bucket, a refused token exchange) the breaker
+opens immediately and the rows stay pending **without** an attempt being counted —
+see [stream health and test delivery](stream-health.md).
+
 ## Per-stream circuit breaker
 
 After `failure_threshold` consecutive failures the stream's breaker **opens**
 (`circuit_opened_at` is stamped) and delivery pauses for `cooldown_seconds`. Once
 the cooldown elapses one probe is allowed (half-open); a success closes it, a
 failure re-opens it. Health is visible on the stream — `consecutive_failures`,
-`last_success_at`, `circuit_opened_at`.
+`last_success_at`, `circuit_opened_at`, `last_error`, `last_failure_kind` — and
+summarized by `$stream->health()`.
 
 A failing destination is isolated: it never blocks the app, the caller, or another
 stream. But it is never black-holed — failures are counted and surfaced, not

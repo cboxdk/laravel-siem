@@ -6,6 +6,8 @@ namespace Cbox\LaravelSiem\Contracts;
 
 use Cbox\LaravelSiem\Enums\AuthScheme;
 use Cbox\LaravelSiem\Enums\Destination;
+use Cbox\LaravelSiem\Exceptions\InvalidStreamConfiguration;
+use Cbox\LaravelSiem\Exceptions\UnsafeStreamUrl;
 use Cbox\LaravelSiem\Models\LogStream;
 use Cbox\LaravelSiem\ValueObjects\RegisteredStream;
 
@@ -22,8 +24,18 @@ interface LogStreams
      * the returned {@see RegisteredStream} and only ciphertext is persisted. The
      * endpoint URL is SSRF-checked before it is stored.
      *
+     * The cloud destinations ({@see Destination::requiresOptions()}: Datadog, S3,
+     * GCS) take their typed settings in `$options` and their credential in
+     * `$secret`; pass an empty `$endpointUrl` to use the destination's own
+     * endpoint (derived from the site/region), or an `https` URL for a custom one
+     * (an S3-compatible store). Settings are validated before anything is stored.
+     *
      * @param  array<string, string>  $redaction  per-field policy (field => hash|mask|drop)
      * @param  array<string, mixed>  $filters  action allow/deny policy
+     * @param  array<string, mixed>  $options  destination settings (cloud destinations only)
+     *
+     * @throws InvalidStreamConfiguration when the destination settings are invalid
+     * @throws UnsafeStreamUrl when the endpoint is not a public address
      */
     public function create(
         string $name,
@@ -34,11 +46,15 @@ interface LogStreams
         ?string $ownerKey = null,
         array $filters = [],
         array $redaction = [],
+        array $options = [],
     ): RegisteredStream;
 
     /**
      * Update mutable attributes of a stream. Passing `secret` rotates it (stored
      * re-encrypted); the new plaintext is revealed once on the returned object.
+     * Changing the destination settings (`destination`, `endpoint_url`, `options`,
+     * `secret`) re-validates them and resets the circuit breaker, so a stream an
+     * operator just fixed is tried on the next pump.
      *
      * @param  array<string, mixed>  $attributes
      */

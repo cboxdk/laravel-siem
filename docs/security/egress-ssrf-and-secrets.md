@@ -39,6 +39,15 @@ different tenants configure their own stream endpoints (as the laravel-id audit
 binding does) must never expose this toggle to them, or one tenant could aim a
 stream at an internal service or the cloud metadata endpoint.
 
+### Cloud destinations
+
+The Datadog, S3 and GCS sinks and the credential exchanges (STS `AssumeRole`, the
+Google token request) go through the same egress path: the **exact request URL**
+(for S3, the virtual-hosted bucket host) is validated and pinned on every request. A
+custom endpoint (MinIO, R2, a Datadog proxy) is checked at registration too, and must
+be `https://`. The Google token endpoint is `siem.gcs.token_uri`, never the
+`token_uri` inside a customer's key file, so a crafted key cannot redirect it.
+
 ## TLS verification is always on
 
 Certificate verification is never disabled silently. The sink adds no `verify`
@@ -54,6 +63,12 @@ turn it off is `siem.http.tls_verify = false`, and doing so logs a loud warning 
 - **Revealed once** — `create()` returns the plaintext exactly once (a generated
   HMAC key, or a caller-supplied token echoed back). After that it is unrecoverable
   from the model.
+- **Cloud credentials** — the Datadog API key, the S3 secret access key and the GCS
+  service-account JSON key are the same encrypted `secret`; non-secret settings
+  (site, bucket, region, access key ID, role ARN, external ID) live in `options`.
+  Short-lived credentials derived from them (GCS access tokens, STS session
+  credentials) are cached encrypted with the app key and expire early. Assumed-role
+  S3 streams store no customer secret at all, and each gets its own external ID.
 - **Never logged** — the token is only ever a request header or an HMAC input.
   Every stored delivery error and dead-letter payload is passed through a scrubber
   that strips the secret, so it can never leak into `last_error`.
